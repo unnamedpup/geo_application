@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: geoapp-db
+    environment:
+      POSTGRES_DB: geo
+      POSTGRES_USER: geo
+      POSTGRES_PASSWORD: geo
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./importer/00_init.sql:/docker-entrypoint-initdb.d/00_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U geo -d geo"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  importer:
+    build: ./importer
+    container_name: geoapp-importer
+    environment:
+      DATABASE_URL: postgresql://geo:geo@db:5432/geo
+      CITY_QUERY: "Saint Petersburg, Russia"
+      OVERPASS_URLS: "https://overpass.kumi.systems/api/interpreter,https://overpass-api.de/api/interpreter,https://overpass.openstreetmap.ru/api/interpreter"
+      TILE_N: "3"
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["import"]
+
+  backend:
+    build: ./backend
+    container_name: geoapp-backend
+    environment:
+      DATABASE_URL: postgresql://geo:geo@db:5432/geo
+      CORS_ORIGINS: http://localhost:5173
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build: ./frontend
+    container_name: geoapp-frontend
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+
+volumes:
+  pgdata:
+  osmdata:
